@@ -111,47 +111,138 @@ function renderResults(items){
   });
   resizeWidget();
 }
-async function searchInterventions(){
-  const clientId=$('clientId').value.trim();
-  $('results').innerHTML='';
+
+let currentClientId = '';
+
+function extractClientId(value) {
+  if (value === null || value === undefined) return '';
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const id = extractClientId(item);
+      if (id) return id;
+    }
+    return '';
+  }
+
+  if (typeof value === 'object') {
+    for (const key of ['value', 'answer', 'answerValue', 'scriviUna26', 'input_26', '26']) {
+      if (value[key] !== undefined) {
+        const id = extractClientId(value[key]);
+        if (id) return id;
+      }
+    }
+    if (value.name === 'scriviUna26' && value.val !== undefined) {
+      return extractClientId(value.val);
+    }
+  }
+
+  return '';
+}
+
+function processClient(value) {
+  const id = extractClientId(value);
+  if (id === currentClientId) return;
+
+  currentClientId = id;
+  $('results').innerHTML = '';
   sendValue('');
-  if(!clientId){
-    setStatus('Inserisci prima l’ID Cliente.',true);
+
+  $('clientStatus').textContent = id
+    ? 'Cliente selezionato. Puoi cercare gli interventi aperti.'
+    : 'In attesa della selezione del cliente...';
+
+  $('searchBtn').disabled = !id;
+  setStatus(id
+    ? 'Pronto per cercare gli interventi aperti.'
+    : 'Seleziona un cliente nel widget Clienti.');
+
+  if (id) searchInterventions();
+}
+
+async function searchInterventions() {
+  const clientId = currentClientId;
+  $('results').innerHTML = '';
+
+  if (!clientId) {
+    setStatus('Seleziona prima un cliente.', true);
     return;
   }
-  $('searchBtn').disabled=true;
-  setStatus('Ricerca in corso...');
-  try{
-    const url=API_URL+'?action=interventiaperti&ID_Cliente='+encodeURIComponent(clientId);
-    const response=await fetch(url,{method:'GET',cache:'no-store'});
-    if(!response.ok)throw new Error('Risposta HTTP '+response.status);
-    const json=await response.json();
-    if(!json||json.ok!==true)throw new Error(json?.error||'Risposta non valida dal servizio.');
-    renderResults(Array.isArray(json.results)?json.results:[]);
-  }catch(err){
+
+  $('searchBtn').disabled = true;
+  setStatus('Ricerca degli interventi aperti in corso...');
+
+  try {
+    const url = API_URL + '?action=interventiaperti&ID_Cliente='
+      + encodeURIComponent(clientId);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store'
+    });
+
+    if (!response.ok) throw new Error('Risposta HTTP ' + response.status);
+
+    const json = await response.json();
+
+    if (!json || json.ok !== true) {
+      throw new Error(json?.error || 'Risposta non valida dal servizio.');
+    }
+
+    if (clientId !== currentClientId) return;
+
+    renderResults(Array.isArray(json.results) ? json.results : []);
+  } catch (err) {
     console.error(err);
-    setStatus('Errore nella ricerca. Verifica la connessione alla Web App e riprova.',true);
-  }finally{
-    $('searchBtn').disabled=false;
+    setStatus('Errore nella ricerca. Verifica la connessione alla Web App.', true);
+  } finally {
+    $('searchBtn').disabled = !currentClientId;
     resizeWidget();
   }
 }
-$('searchBtn').addEventListener('click',searchInterventions);
-$('clearBtn').addEventListener('click',()=>{
-  $('clientId').value='';
-  $('results').innerHTML='';
-  sendValue('');
-  setStatus('Inserisci un ID Cliente e avvia la ricerca.');
-});
-if(window.JFCustomWidget){
-  JFCustomWidget.subscribe('ready',function(){
-    JFCustomWidget.subscribe('submit',function(){
-      JFCustomWidget.sendSubmit({valid:true,value:selectedId});
+
+
+$('searchBtn').addEventListener('click', searchInterventions);
+
+function readClientFromJotform() {
+  if (typeof JFCustomWidget.getFieldsValueByName === 'function') {
+    JFCustomWidget.getFieldsValueByName(
+      ['scriviUna26'],
+      function(data) {
+        processClient(data);
+      }
+    );
+  }
+}
+
+if (window.JFCustomWidget) {
+  JFCustomWidget.subscribe('ready', function() {
+    readClientFromJotform();
+
+    if (typeof JFCustomWidget.listenFromField === 'function') {
+      JFCustomWidget.listenFromField('input_26', 'change', processClient);
+      JFCustomWidget.listenFromField('input_26', 'keyup', processClient);
+    }
+
+    JFCustomWidget.subscribe('submit', function() {
+      JFCustomWidget.sendSubmit({
+        valid: true,
+        value: selectedId
+      });
     });
   });
 }
-if(window.ResizeObserver)new ResizeObserver(resizeWidget).observe(document.body);
+
+if (window.ResizeObserver) {
+  new ResizeObserver(resizeWidget).observe(document.body);
+}
+
 resizeWidget();
+
 </script>
 </body>
 </html>
