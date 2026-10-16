@@ -26,12 +26,14 @@ button:disabled{opacity:.5;cursor:default}
 <body>
 <h3>INTERVENTI APERTI</h3>
 
-<label for="clientId">ID Cliente (test)</label>
-<input id="clientId" type="text" inputmode="numeric" placeholder="Inserisci l'ID Cliente">
+<div class="status" id="clientStatus" role="status">
+  In attesa della selezione del cliente...
+</div>
 
 <div class="actions">
-  <button id="searchBtn" type="button">Cerca interventi</button>
-  <button id="clearBtn" type="button">Azzera</button>
+  <button id="searchBtn" type="button" disabled>
+    Cerca interventi aperti
+  </button>
 </div>
 
 <div id="status" class="status" role="status" aria-live="polite">
