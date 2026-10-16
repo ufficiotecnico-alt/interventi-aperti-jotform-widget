@@ -1,30 +1,156 @@
+
 <!doctype html>
 <html lang="it">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Interventi aperti</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 12px;
-      color: #222;
-      font-size: 14px;
-    }
-    h3 { margin: 0 0 12px; font-size: 16px; }
-    .status {
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      background: #fafafa;
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interventi aperti</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:12px;color:#222;font-size:14px}
+h3{margin:0 0 12px;font-size:16px}
+label{display:block;font-weight:bold;margin:10px 0 5px}
+input,button{box-sizing:border-box;font:inherit}
+input{width:100%;padding:9px;border:1px solid #999;border-radius:4px}
+button{padding:9px 12px;border:1px solid #888;border-radius:4px;background:#fff;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+.actions{display:flex;gap:8px;margin-top:10px}
+.actions button{flex:1}
+.status{margin-top:10px;padding:9px;border:1px solid #ccc;border-radius:4px;background:#fafafa}
+.results{margin-top:10px}
+.item{border:1px solid #bbb;border-radius:5px;padding:10px;margin-top:8px}
+.item button{margin-top:8px;width:100%}
+.muted{font-size:12px;color:#666}
+.error{color:#a00000}
+</style>
+<script src="https://js.jotform.com/JotFormCustomWidget.min.js"></script>
 </head>
 <body>
-  <h3>INTERVENTI APERTI</h3>
-  <div class="status" role="status">
-    Widget installato correttamente. In attesa del collegamento con Jotform.
-  </div>
+<h3>INTERVENTI APERTI</h3>
+
+<label for="clientId">ID Cliente (test)</label>
+<input id="clientId" type="text" inputmode="numeric" placeholder="Inserisci l'ID Cliente">
+
+<div class="actions">
+  <button id="searchBtn" type="button">Cerca interventi</button>
+  <button id="clearBtn" type="button">Azzera</button>
+</div>
+
+<div id="status" class="status" role="status" aria-live="polite">
+Inserisci un ID Cliente e avvia la ricerca.
+</div>
+<div id="results" class="results"></div>
+
+<script>
+const API_URL='https://script.google.com/macros/s/AKfycbyxdCMuqQ-jH7WrS1fvGLTEYeZ3VgZIqaUQc4Bqtm-te-smG18989Zv9WrnRwllq9V8/exec';
+const $=id=>document.getElementById(id);
+let selectedId='';
+
+function resizeWidget(){
+  if(window.JFCustomWidget?.requestFrameResize){
+    const h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight)+8;
+    JFCustomWidget.requestFrameResize({height:h});
+  }
+}
+function setStatus(message,isError=false){
+  $('status').textContent=message;
+  $('status').classList.toggle('error',isError);
+  resizeWidget();
+}
+function sendValue(value){
+  selectedId=String(value||'');
+  if(window.JFCustomWidget){
+    JFCustomWidget.sendData({value:selectedId});
+  }
+}
+function formatDate(value){
+  if(!value)return 'Non indicata';
+  const s=String(value);
+  const match=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(match)return match[3]+'/'+match[2]+'/'+match[1];
+  return s;
+}
+function renderResults(items){
+  const root=$('results');
+  root.innerHTML='';
+  if(!items.length){
+    setStatus('Nessun intervento aperto trovato per questo cliente.');
+    return;
+  }
+  setStatus('Interventi aperti trovati: '+items.length);
+  items.forEach(item=>{
+    const id=String(item.ID_Intervento||'').trim();
+    const card=document.createElement('div');
+    card.className='item';
+
+    const title=document.createElement('strong');
+    title.textContent='Intervento '+(id||'(ID mancante)');
+    card.appendChild(title);
+
+    const dates=document.createElement('div');
+    dates.className='muted';
+    dates.style.marginTop='6px';
+    dates.textContent='Apertura: '+formatDate(item.Data_Apertura)+
+      ' · Ultima giornata: '+formatDate(item.Data_Ultima_Giornata);
+    card.appendChild(dates);
+
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.textContent='Seleziona per proseguire';
+    btn.disabled=!id;
+    btn.addEventListener('click',()=>{
+      sendValue(id);
+      document.querySelectorAll('.item button').forEach(b=>{
+        b.textContent='Seleziona per proseguire';
+      });
+      btn.textContent='Intervento selezionato';
+      setStatus('Selezionato intervento '+id+'. Il valore è stato inviato al campo di output di questo widget.');
+    });
+    card.appendChild(btn);
+    root.appendChild(card);
+  });
+  resizeWidget();
+}
+async function searchInterventions(){
+  const clientId=$('clientId').value.trim();
+  $('results').innerHTML='';
+  sendValue('');
+  if(!clientId){
+    setStatus('Inserisci prima l’ID Cliente.',true);
+    return;
+  }
+  $('searchBtn').disabled=true;
+  setStatus('Ricerca in corso...');
+  try{
+    const url=API_URL+'?action=interventiaperti&ID_Cliente='+encodeURIComponent(clientId);
+    const response=await fetch(url,{method:'GET',cache:'no-store'});
+    if(!response.ok)throw new Error('Risposta HTTP '+response.status);
+    const json=await response.json();
+    if(!json||json.ok!==true)throw new Error(json?.error||'Risposta non valida dal servizio.');
+    renderResults(Array.isArray(json.results)?json.results:[]);
+  }catch(err){
+    console.error(err);
+    setStatus('Errore nella ricerca. Verifica la connessione alla Web App e riprova.',true);
+  }finally{
+    $('searchBtn').disabled=false;
+    resizeWidget();
+  }
+}
+$('searchBtn').addEventListener('click',searchInterventions);
+$('clearBtn').addEventListener('click',()=>{
+  $('clientId').value='';
+  $('results').innerHTML='';
+  sendValue('');
+  setStatus('Inserisci un ID Cliente e avvia la ricerca.');
+});
+if(window.JFCustomWidget){
+  JFCustomWidget.subscribe('ready',function(){
+    JFCustomWidget.subscribe('submit',function(){
+      JFCustomWidget.sendSubmit({valid:true,value:selectedId});
+    });
+  });
+}
+if(window.ResizeObserver)new ResizeObserver(resizeWidget).observe(document.body);
+resizeWidget();
+</script>
 </body>
 </html>
